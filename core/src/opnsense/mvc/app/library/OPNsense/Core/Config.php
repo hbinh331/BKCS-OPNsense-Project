@@ -748,11 +748,11 @@ class Config extends Singleton
         $revision = $this->updateRevision($revision, null, $time);
 
         if ($this->config_file_handle !== null) {
-            if (flock($this->config_file_handle, LOCK_EX)) {
+            if (flock($this->config_file_handle, LOCK_EX)) { //lock file to avoid race conditions
                 fseek($this->config_file_handle, 0);
                 chmod($this->config_file, 0640);
                 ftruncate($this->config_file_handle, 0);
-                fwrite($this->config_file_handle, (string)$this);
+                fwrite($this->config_file_handle, (string)$this); //write and push data to disk
                 // flush, unlock, but keep the handle open
                 fflush($this->config_file_handle);
                 $backup_filename = $backup ? $this->backup($time) : null;
