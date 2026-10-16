@@ -3,9 +3,8 @@
 ## 1. Task
 Build a new plugin used for managing log.
 
-## 2. Analysing the task
-### 2.1. Exploring OPNsense's log mechanism
-#### a. Overview of `syslog-ng`
+## 2. Exploring OPNsense's log mechanism
+### 2.1. Overview of `syslog-ng`
 OPNsense uses `syslog-ng` to manage log.  
 `syslog-ng` is a <b>daemon</b> that receives log from multiple sources, processes these log and forward them to their designated destinations.  
 In general, `syslog-ng` setup can be summarized in 6 steps below:
@@ -29,7 +28,7 @@ Log from Source ──┬──> [Log block 1]: Check Filter 1 ──> (match ==
 ```
 <i>If a log line satisfies conditions of both block 1 and block 2, it will be delivered to both destination 1 and destination 2.</i>  
 
-#### b. How OPNsense implements `syslog-ng`
+### 2.2. How OPNsense implements `syslog-ng`
 <b>An overview of `syslog-ng`'s config files:</b> 
 > Config files are stored at `/core/src/opnsense/service/templates/OPNsense/Syslog`
 
@@ -152,9 +151,100 @@ Below is an example of the workflow when an user performs a `Save` action:
                                                       (this directory does not exist in core)
 ```
 
-### 2.2. OPNsense's current collection of logs and Suggestions for improvements:
+## 3. Summary of OPNsense's current collection of logs and Suggestions for improvements
 
-## 4. Appendix
+### 3.1. Current logs
+
+The GUI menu **System -> Log Files** exposes 5 logs (`core/src/opnsense/mvc/app/models/OPNsense/Core/Menu/Menu.xml:73-79`). Each one is a file written by `syslog-ng` through a filter in `core/src/opnsense/service/templates/OPNsense/Syslog/local/`, except Boot.
+
+### Audit
+Filter (`.../Syslog/local/audit.conf:5`), output file `/var/log/audit/audit_YYYYMMDD.log`:
+```
+filter f_local_audit { program("audit") or facility(auth); };
+```
+Helper used by the legacy GUI code (`core/src/etc/inc/auth.inc:37-42`): `auth_log($message, $priority)` opens syslog with ident `audit`, facility `LOG_AUTH`, then writes the message (default level `LOG_ERR`).
+
+| Event | Code that handles it | What the code does | Log message |
+|---|---|---|---|
+| User logs in correctly | `core/src/www/authgui.inc:184-185` | After the password check passes and the session is set, calls `auth_log(..., LOG_NOTICE)`, unless `quietlogin` is enabled | `Successful login for user 'x' from: IP` |
+| User logs in with wrong password | `core/src/www/authgui.inc:210` | `else` branch of the check: calls `auth_log(...)` with the default level (error) | `Web GUI authentication error for 'x' from IP` |
+| User clicks Logout, or logout after timeout | `core/src/www/authgui.inc:241-243` | On `?logout`: if `$_SESSION['Logout']` is set logs "timed out", otherwise "logged out" | `User logged out for user 'x' from: IP` |
+| Request without a session | `core/src/opnsense/mvc/app/controllers/OPNsense/Base/ControllerRoot.php:140` | `doAuth()` finds no `Username` in the session, logs, redirects to login | `no active session, user not found (called "URI" @ IP)` |
+| Session idle too long | `ControllerRoot.php:153` | `last_access` older than `session_timeout` (default 14400 s), logs, clears the session | `session expired (user @ IP)` |
+| User opens a page without permission | `ControllerRoot.php:172` | ACL check `isPageAccessible()` fails, logs, redirects to `/` | `uri ... not accessible for user x` |
+| User saves configuration (GUI or API) | `core/src/opnsense/mvc/app/library/OPNsense/Core/Config.php:766` calls `auditLogChange()` (`Config.php:551-562`) | After `config.xml` and its backup are written, logs who saved and which backup file was created | `user x@IP changed configuration to /conf/backup/config-<time>.xml in /URI ...` |
+| Password cannot be set | `core/src/etc/inc/auth.inc:311, 470`, `core/src/opnsense/mvc/app/controllers/OPNsense/Auth/Api/UserController.php:107` | `local_user_set()` has no password or hashing fails | `Cannot set user x: password is missing` |
+
+`Config.php:553-554`:
+```php
+openlog("audit", LOG_ODELAY, LOG_AUTH);
+syslog(LOG_NOTICE, sprintf("user %s%s changed configuration to %s in %s %s", ...));
+```
+Note: the `ControllerRoot.php` lines use ident `audit` but facility `local4` (`ControllerRoot.php:108-111`), so they reach the Audit file but not `lockout_handler`, whose filter is `facility(auth)` (`.../Syslog/syslog-ng-lockout.conf:2`).
+
+### Backend
+Filter (`.../Syslog/local/configd.conf:5`):
+```
+filter f_local_configd { (program("configd.py") or program("api")) and not facility(auth); };
+```
+| Event | Code that handles it | What the code does |
+|---|---|---|
+| PHP cannot connect to `configd` socket | `core/src/opnsense/mvc/app/library/OPNsense/Core/Backend.php:91` | After retries fail, `getLogger()->error("Failed to connect to configd socket ...")` |
+| `configd` is not running | `Backend.php:94` | Socket file does not exist: `error("failed waiting for configd ...")` |
+| A `configd` command is too slow | `Backend.php:166` | Elapsed time exceeds the timeout: `error("Timeout (...) executing : <command>")` |
+| `configd` closes the connection | `Backend.php:169` | `feof()` on the stream: `error("Configd disconnected while executing : ...")` |
+| API call with a wrong key/secret | `core/src/opnsense/mvc/app/controllers/OPNsense/Base/ApiControllerBase.php:340` | `authenticate()` returns false |
+| API key valid but URI not allowed | `ApiControllerBase.php:309` | ACL check fails, response 403 |
+| API request without matching CSRF token | `ApiControllerBase.php:376` | Logs error |
+| `configd` daemon itself | `core/src/opnsense/service/configd.py:133` | `syslog.openlog("configd.py")` for daemon messages |
+
+`ApiControllerBase.php:340-341`:
+```php
+$this->getLogger()->error("uri " . $_SERVER['REQUEST_URI'] .
+    " authentication failed for api key " . $apiKey);
+```
+Controller messages use ident `api`, facility `local4` (`ControllerRoot.php:108-111`).
+
+### Boot
+Not collected by `syslog-ng`. During startup, each step calls `service_log()` (93 call sites, e.g. `core/src/etc/inc/system.inc:41,193,485`), which appends a line to `/var/log/boot.log` only while the system is booting (`core/src/etc/inc/util.inc:340-348`):
+```php
+if (product::getInstance()->booting()) {
+    file_put_contents('/var/log/boot.log', implode(' ', [ (new DateTime())->format('c'),
+        $caller . '[' . getmypid() . ']', rtrim($message) . PHP_EOL ]), FILE_APPEND | LOCK_EX);
+```
+The file is emptied at each boot (`core/src/etc/rc.subr.d/var:93`) and read by the GUI as a legacy file (`core/src/opnsense/scripts/syslog/log_matcher.py:152`).
+
+### General
+Catch-all (`core/src/opnsense/service/templates/OPNsense/Syslog/syslog-ng-local.conf:35-38`): every message not matched by another local filter and with level `notice` or higher, written to `/var/log/system/system_YYYYMMDD.log`. Kernel messages arrive through `/dev/klog` (`.../Syslog/sources/001-local.conf:2`).
+```
+filter f_local_system { not filter(<all other local filters>) and level(notice..emerg); };
+```
+
+### Web GUI
+Filter only (`.../Syslog/local/lighttpd.conf:5`): `filter f_local_lighttpd { program("lighttpd"); };`. The messages are written by the `lighttpd` web server itself, so they are not generated by code in this repo.
+
+**Reading and parsing.** The GUI finds the files in `core/src/opnsense/scripts/syslog/log_matcher.py:138-156` and parses each line with `core/src/opnsense/scripts/syslog/logformats/syslog.py` (RFC 5424, RFC 3164, epoch, service format). The parser extracts only `timestamp`, `process_name`, `pid`, `facility`, `severity` and the message text.
+
+### 3.2. Suggestions
+
+1. **Record what changed in a configuration save.** The audit line only has user, backup file name and URI (`Config.php:554-560`), not the old and new values. A script placed in `/usr/local/etc/rc.syshook.d/config/` receives each new backup path (`core/src/opnsense/scripts/system/trigger_config_changed_events.py:60`), so it can diff the backup against the previous one and write the result to the audit log. This directory does not exist in core, so the script must be added.
+2. **Add structured fields.** User, IP and action are free text inside one message, so the viewer can only search strings. Use a fixed message format (e.g. `key=value` pairs) and add a parser class in `core/src/opnsense/scripts/syslog/logformats/` (classes in that folder are loaded automatically, `__init__.py:152-160`).
+3. **Log user actions that do not change the configuration** (restart service, reboot, firmware update, etc.). In the call sites reviewed (`auth_log`, `auditLogChange`, `ControllerRoot.php`, `ApiControllerBase.php`) none is logged to `audit`. A central place to hook is the request authentication code in `ApiControllerBase.php:296-345` (API) and `ControllerRoot.php:129-179` (GUI), which already knows the user, IP and URI. The 27 files that call `openlog()` were not all reviewed, so check them first.
+4. **Send API authentication failures to Audit.** They are currently logged with ident `api` and facility `local4` (`ApiControllerBase.php:340`, `ControllerRoot.php:111`), so they land in Backend, and they never reach `lockout_handler` because its filter is `facility(auth)` (`core/src/opnsense/service/templates/OPNsense/Syslog/syslog-ng-lockout.conf:2`).
+5. **Make successful logins always auditable.** The success message is skipped when `quietlogin` is set (`authgui.inc:184-185`):
+```php
+   if (!isset($config['system']['webgui']['quietlogin'])) {
+       auth_log(sprintf("Successful login for user '%s' from: %s", ...), LOG_NOTICE);
+```
+6. **Check log retention.** `core/src/etc/rc.subr.d/var:88` contains a branch that mounts `/var/log` as `tmpfs` (RAM), where logs, including audit, would be lost on reboot. The condition that enables it was not read.
+
+## 4. Steps to add a new type of log
+Step 1: Throw log with `openlog/syslog` or class `Syslog` (check `Syslog.php`)  
+Step 2: Create a new file at `src/opnsense/service/templates/OPNsense/Syslog/local/<log_name>.conf`. This file contains a filter `filter f_local_<name>`  
+Step 3: Adjust `Menu.xml` and `ACL.xml` accordingly  
+Step 4: If log format is different from existed formats, add a new class in `scripts/syslog/logformats/syslog.py`
+
+## 5. Appendix
 ### RFC-3164
 ---
 > This standard provides a way to format and transport Syslog messages
