@@ -5,7 +5,7 @@ Build a new plugin used for managing log.
 
 ## 2. Analysing the task
 ### 2.1. Exploring OPNsense's log mechanism
-#### 2.1.1. Overview of `syslog-ng`
+#### a. Overview of `syslog-ng`
 OPNsense uses `syslog-ng` to manage log.  
 `syslog-ng` is a <b>daemon</b> that receives log from multiple sources, processes these log and forward them to their designated destinations.  
 In general, `syslog-ng` setup can be summarized in 6 steps below:
@@ -29,7 +29,7 @@ Log from Source ──┬──> [Log block 1]: Check Filter 1 ──> (match ==
 ```
 <i>If a log line satisfies conditions of both block 1 and block 2, it will be delivered to both destination 1 and destination 2.</i>  
 
-#### 2.1.2. How OPNsense implements `syslog-ng`
+#### b. How OPNsense implements `syslog-ng`
 <b>An overview of `syslog-ng`'s config files:</b> 
 > Config files are stored at `/core/src/opnsense/service/templates/OPNsense/Syslog`
 
