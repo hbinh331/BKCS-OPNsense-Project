@@ -550,7 +550,7 @@ class Config extends Singleton
      */
     private function auditLogChange($backup_filename, $revision)
     {
-        openlog("audit", LOG_ODELAY, LOG_AUTH);
+        openlog("audit", LOG_ODELAY, LOG_AUTH); //open connection to system logger
         syslog(LOG_NOTICE, sprintf(
             "user %s%s changed configuration to %s in %s %s",
             $revision['username'],
@@ -558,7 +558,7 @@ class Config extends Singleton
             $backup_filename,
             !empty($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : $_SERVER['SCRIPT_NAME'],
             $revision['description'] ?? ''
-        ));
+        )); //generate a system log message
     }
 
     /**
