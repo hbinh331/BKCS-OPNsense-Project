@@ -1,10 +1,21 @@
 # WEEK 3 REPORT
+## Table of Contents
+
+* [1. Task](#1-task)  
+* [2. Task Analysis](#2-task-analysis)  
+    * [2.1 Exploring OPNsense's log mechanism - Overview of `syslog-ng`](#21-exploring-opnsenses-log-mechanism---overview-of-syslog-ng)  
+    * [2.2 How OPNsense implements `syslog-ng`](#22-how-opnsense-implements-syslog-ng)  
+* [3. Summary of OPNsense's current collection of logs and Suggestions for improvements](#3-summary-of-opnsenses-current-collection-of-logs-and-suggestions-for-improvements)
+    * [3.1 Current logs](#31-current-logs)
+    * [3.2 Suggestions](#32-suggestions)
+* [4. Add a new type of log](#4-basic-steps-to-add-a-new-type-of-log-further-coding-might-be-required-depending-on-the-type-of-log-being-added)
+* [5. Appendix](#5-appendix)
 
 ## 1. Task
 Build a new plugin used for managing log.
 
-## 2. Exploring OPNsense's log mechanism
-### 2.1. Overview of `syslog-ng`
+## 2. Task Analysis
+### 2.1. Exploring OPNsense's log mechanism - Overview of `syslog-ng`
 OPNsense uses `syslog-ng` to manage log.  
 `syslog-ng` is a <b>daemon</b> that receives log from multiple sources, processes these log and forward them to their designated destinations.  
 In general, `syslog-ng` setup can be summarized in 6 steps below:
@@ -180,7 +191,6 @@ Helper used by the legacy GUI code (`core/src/etc/inc/auth.inc:37-42`): `auth_lo
 openlog("audit", LOG_ODELAY, LOG_AUTH);
 syslog(LOG_NOTICE, sprintf("user %s%s changed configuration to %s in %s %s", ...));
 ```
-Note: the `ControllerRoot.php` lines use ident `audit` but facility `local4` (`ControllerRoot.php:108-111`), so they reach the Audit file but not `lockout_handler`, whose filter is `facility(auth)` (`.../Syslog/syslog-ng-lockout.conf:2`).
 
 ### Backend
 Filter (`.../Syslog/local/configd.conf:5`):
@@ -230,20 +240,19 @@ Filter only (`.../Syslog/local/lighttpd.conf:5`): `filter f_local_lighttpd { pro
 1. **Record what changed in a configuration save.** The audit line only has user, backup file name and URI (`Config.php:554-560`), not the old and new values. A script placed in `/usr/local/etc/rc.syshook.d/config/` receives each new backup path (`core/src/opnsense/scripts/system/trigger_config_changed_events.py:60`), so it can diff the backup against the previous one and write the result to the audit log. This directory does not exist in core, so the script must be added.
 2. **Add structured fields.** User, IP and action are free text inside one message, so the viewer can only search strings. Use a fixed message format (e.g. `key=value` pairs) and add a parser class in `core/src/opnsense/scripts/syslog/logformats/` (classes in that folder are loaded automatically, `__init__.py:152-160`).
 3. **Log user actions that do not change the configuration** (restart service, reboot, firmware update, etc.). In the call sites reviewed (`auth_log`, `auditLogChange`, `ControllerRoot.php`, `ApiControllerBase.php`) none is logged to `audit`. A central place to hook is the request authentication code in `ApiControllerBase.php:296-345` (API) and `ControllerRoot.php:129-179` (GUI), which already knows the user, IP and URI. The 27 files that call `openlog()` were not all reviewed, so check them first.
-4. **Send API authentication failures to Audit.** They are currently logged with ident `api` and facility `local4` (`ApiControllerBase.php:340`, `ControllerRoot.php:111`), so they land in Backend, and they never reach `lockout_handler` because its filter is `facility(auth)` (`core/src/opnsense/service/templates/OPNsense/Syslog/syslog-ng-lockout.conf:2`).
-5. **Make successful logins always auditable.** The success message is skipped when `quietlogin` is set (`authgui.inc:184-185`):
+4. **Make successful logins always auditable.** The success message is skipped when `quietlogin` is set (`www/authgui.inc:184-185`):
 ```php
    if (!isset($config['system']['webgui']['quietlogin'])) {
        auth_log(sprintf("Successful login for user '%s' from: %s", ...), LOG_NOTICE);
 ```
-6. **Check log retention.** `core/src/etc/rc.subr.d/var:88` contains a branch that mounts `/var/log` as `tmpfs` (RAM), where logs, including audit, would be lost on reboot. The condition that enables it was not read.
 
-## 4. Steps to add a new type of log
+## 4. Add a new type of log
 Step 1: Throw log with `openlog/syslog` or class `Syslog` (check `Syslog.php`)  
 Step 2: Create a new file at `src/opnsense/service/templates/OPNsense/Syslog/local/<log_name>.conf`. This file contains a filter `filter f_local_<name>`  
 Step 3: Adjust `Menu.xml` and `ACL.xml` accordingly  
 Step 4: If log format is different from existed formats, add a new class in `scripts/syslog/logformats/syslog.py`
 
+*NOTE: These are only the basic steps, further steps might be required depending on the type of log being added*
 ## 5. Appendix
 ### RFC-3164
 ---
