@@ -31,6 +31,40 @@
   [`log_matcher.py`](../../core/src/opnsense/scripts/syslog/log_matcher.py#L87-L154)
 - GUI: [`log.volt`](../../core/src/opnsense/mvc/app/views/OPNsense/Diagnostics/log.volt#L241-L250)
 
+**Tài liệu chính thức cho các lệnh/API bên ngoài:**
+
+- [FreeBSD `logger(1)`](https://man.freebsd.org/cgi/man.cgi?query=logger&sektion=1)
+  mô tả cú pháp và các tùy chọn `-p`, `-t`.
+- [FreeBSD `syslog(3)`](https://man.freebsd.org/cgi/man.cgi?query=syslog&sektion=3)
+  mô tả các hàm `syslog()` và `openlog()` mà code dùng để gửi log.
+- [FreeBSD `syslog.conf(5)`](https://man.freebsd.org/cgi/man.cgi?query=syslog.conf&sektion=5)
+  giải thích `facility` và mức độ (`severity`) như `user.err`.
+- [FreeBSD `syslogd(8)`](https://man.freebsd.org/cgi/man.cgi?query=syslogd&sektion=8)
+  mô tả dịch vụ syslog của FreeBSD.
+- [FreeBSD `dmesg(8)`](https://man.freebsd.org/cgi/man.cgi?query=dmesg&sektion=8)
+  mô tả cách đọc vùng lưu thông báo kernel; lệnh này đọc log đã có, không
+  tạo log mới.
+- [FreeBSD `tail(1)`](https://man.freebsd.org/cgi/man.cgi?query=tail&sektion=1)
+  mô tả cách theo dõi các dòng mới trong file; `streamLog.py` dùng `tail -f`
+  cho live log.
+- [syslog-ng `syslog-ng-ctl(1)`](https://github.com/syslog-ng/syslog-ng/blob/develop/doc/man/local/syslog-ng-ctl.1)
+  là manual upstream cho lệnh `syslog-ng-ctl stats` được gọi trong action
+  Statistics.
+
+Các hàm như `LogController::__call()`, `LogMatcher.match_records()` và các
+action `configdRun()` là code riêng của OPNsense, không có manual FreeBSD
+riêng. Với các hàm này, link tới file định nghĩa/điểm gọi ở mục **Code** bên
+trên và các reference trong từng hàng là tài liệu chính xác nhất. Các bản
+source tương ứng trong repository upstream của OPNsense:
+[LogController.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Diagnostics/Api/LogController.php),
+[queryLog.py](https://github.com/opnsense/core/blob/master/src/opnsense/scripts/syslog/queryLog.py),
+[log_matcher.py](https://github.com/opnsense/core/blob/master/src/opnsense/scripts/syslog/log_matcher.py),
+[streamLog.py](https://github.com/opnsense/core/blob/master/src/opnsense/scripts/syslog/streamLog.py),
+[AuthenticationFactory.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/library/OPNsense/Auth/AuthenticationFactory.php),
+[Config.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/library/OPNsense/Core/Config.php),
+[ControllerRoot.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Base/ControllerRoot.php)
+và [FirmwareController.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Core/Api/FirmwareController.php).
+
 ## 1. Log đến từ system
 
 "system" = log kernel, log nội bộ, các log ko match filter nào (system catch-all)
@@ -67,7 +101,8 @@ Ví dụ kiểm tra nhóm system:
 logger -p user.err -t poc-system 'POC-system-error'
 ```
 
-- `logger`: gửi đúng một dòng nội dung vào syslog.
+- `logger`: gửi dòng nội dung vào syslog. Xem cú pháp đầy đủ trong
+  [manual FreeBSD `logger(1)`](https://man.freebsd.org/cgi/man.cgi?query=logger&sektion=1).
 - `-p`: chọn thông tin phân loại của dòng. Trong `user.err`, `user` là
   `facility` (nhóm syslog) và `err` là `severity` (mức lỗi). Đây chỉ là nhãn
   mức độ; lệnh không làm dịch vụ gặp lỗi.
@@ -106,7 +141,7 @@ Quyền truy cập quyết định tài khoản nào được mở trang nào.
 
 | Loại log | Event/điều kiện tạo log | Thông tin xem được khi fetch | Câu log hiển thị cho người dùng | Reference code | Proof of Concept |
 |---|---|---|---|---|---|
-| Kernel | Kernel ghi thông điệp vào `/dev/klog`; syslog-ng đọc file thiết bị này và gán tên chương trình là `kernel`. Dòng cấu hình chứng minh nguồn log, không liệt kê toàn bộ loại kernel event. | Message kernel nằm trong `line`; timestamp, process, severity và metadata khác phụ thuộc định dạng thông điệp và parser nhận diện được. | Không có literal log message của kernel trong file cấu hình này; không thể xác định câu cụ thể chỉ từ source `/dev/klog`. GUI hiển thị message kernel thực tế ở `Line`. | [`001-local.conf`](../../core/src/opnsense/service/templates/OPNsense/Syslog/sources/001-local.conf#L2) cấu hình đọc `/dev/klog`; [`log_matcher.py`](../../core/src/opnsense/scripts/syslog/log_matcher.py#L108-L133) parse record. | **Sự kiện kernel thật:** không có lệnh `logger` phù hợp để tạo sự kiện này. Chỉ xem log kernel đã phát sinh tự nhiên trong mục system. Lệnh `logger` gửi log từ shell, nên kết quả của nó không thể chứng minh kernel đã phát log. |
+| Kernel | Kernel ghi thông điệp vào `/dev/klog`; syslog-ng đọc file thiết bị này và gán tên chương trình là `kernel`. Dòng cấu hình chứng minh nguồn log, không liệt kê toàn bộ loại kernel event. | Message kernel nằm trong `line`; timestamp, process, severity và metadata khác phụ thuộc định dạng thông điệp và parser nhận diện được. | Không có literal log message của kernel trong file cấu hình này; không thể xác định câu cụ thể chỉ từ source `/dev/klog`. GUI hiển thị message kernel thực tế ở `Line`. | [`001-local.conf`](../../core/src/opnsense/service/templates/OPNsense/Syslog/sources/001-local.conf#L2) cấu hình đọc `/dev/klog`; [`log_matcher.py`](../../core/src/opnsense/scripts/syslog/log_matcher.py#L108-L133) parse record. | **Sự kiện kernel thật:** không có lệnh `logger` phù hợp để tạo sự kiện này. Chỉ xem log kernel đã phát sinh tự nhiên trong mục system; có thể dùng [`dmesg(8)`](https://man.freebsd.org/cgi/man.cgi?query=dmesg&sektion=8) để đọc buffer kernel hiện có. Lệnh `logger` gửi log từ shell, nên kết quả của nó không thể chứng minh kernel đã phát log. |
 | Syslog-ng nội bộ | Khi syslog-ng tự sinh message nội bộ, source `internal()` nhận message đó. | Message và metadata chung của syslog; không có parser nghiệp vụ riêng trong code này. | Không có literal mẫu ở source `internal()`; `Line` chứa message do syslog-ng thực tế phát ra. | [`001-local.conf`](../../core/src/opnsense/service/templates/OPNsense/Syslog/sources/001-local.conf#L1) chỉ khai báo source, không định nghĩa câu message. | **Log syslog-ng thật:** chỉ xem dòng syslog-ng tự ghi trong lúc hoạt động bình thường. `logger` là chương trình khác gửi log nên không thể tạo đúng nguồn `internal()`; không cố làm syslog-ng gặp lỗi. |
 | System catch-all | Khi message không khớp bất kỳ filter local nào khác và severity từ `notice` đến `emerg`, syslog-ng ghi message vào destination `system`. Đây không phải bản sao toàn bộ mọi log: message mức thấp hơn hoặc đã được filter khác nhận không thuộc nhóm catch-all này. | Record chuẩn hóa như phần cấu trúc chung; nội dung event ở `line`. Trang system mặc định chọn severity `Notice`, có thể thay đổi ở GUI. | Không có một câu cố định: `system` là catch-all nên `Line` giữ nguyên message của event nguồn được chuyển vào nhóm này. | [`syslog-ng-local.conf`](../../core/src/opnsense/service/templates/OPNsense/Syslog/syslog-ng-local.conf#L35-L52) định nghĩa điều kiện và destination system; [`Diagnostics LogController.php`](../../core/src/opnsense/mvc/app/controllers/OPNsense/Diagnostics/LogController.php#L68-L69) đặt severity mặc định. | **Thử đường ghi, không phải sự kiện system thật:** trên shell OPNsense lab chạy `logger -p user.err -t poc-system 'POC-system-error'`. Mở mục system, tìm `POC-system-error`; thấy dòng này nghĩa là syslog nhận được message thử, không phải một dịch vụ thật gặp lỗi. |
 | Configd/API | Khi `configd.py` hoặc `api` phát syslog message, filter đưa vào nhóm `configd`, ngoại trừ message có `facility(auth)`. Filter này phân loại log; bản thân nó không định nghĩa tất cả event hoặc trường của API/configd. | Nội dung nguyên bản trong `line`, cùng metadata chung. | Không có literal câu log chung trong filter. Ví dụ cụ thể phụ thuộc action và emitter configd/API; GUI hiển thị nguyên message emitter gửi. | [`configd.conf`](../../core/src/opnsense/service/templates/OPNsense/Syslog/local/configd.conf#L4-L5) lọc chương trình và loại trừ facility auth. | **Thử bộ lọc, không phải event API thật:** chạy `logger -p user.err -t configd.py 'POC-configd-test'`. Mở mục configd và tìm chuỗi đó. `-t configd.py` khớp tên chương trình mà bộ lọc cấu hình; logger không gọi configd/API. |
@@ -178,7 +213,8 @@ không nhất thiết nằm trong một file riêng tên `user`.
 - **Syslog statistics không phải nội dung log event:** service API có action
   gọi `syslog-ng-ctl stats`, và GUI có tab Statistics riêng. Dữ liệu đó là số
   liệu trạng thái/đếm của syslog-ng, không phải record log được parse như
-  Diagnostics.
+  Diagnostics. Cú pháp lệnh nằm trong manual upstream
+  [`syslog-ng-ctl(1)`](https://github.com/syslog-ng/syslog-ng/blob/develop/doc/man/local/syslog-ng-ctl.1).
   **Ref:** [`actions_syslog.conf`](../../core/src/opnsense/service/conf/actions.d/actions_syslog.conf#L41-L43),
   [`Syslog index.volt`](../../core/src/opnsense/mvc/app/views/OPNsense/Syslog/index.volt#L45-L46),
   [`Syslog index.volt`](../../core/src/opnsense/mvc/app/views/OPNsense/Syslog/index.volt#L109-L116).
