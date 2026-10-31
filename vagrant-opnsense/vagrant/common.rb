@@ -16,7 +16,7 @@ def opnsense_common(config)
   # trị này (26.7 -> stable/26.7), nên đây là đầu vào duy nhất nó cần.
   $opnsense_release   = ENV.fetch('OPNSENSE_RELEASE', '26.7')
 
-  $virtual_machine_ip = '192.168.56.56'
+  $virtual_machine_ip = '192.168.56.57'
   $vagrant_mount_path = '/var/vagrant'
 
   # Tài nguyên cấp cho VM, dùng chung cho cả ba provider. Mặc định nhắm tới máy

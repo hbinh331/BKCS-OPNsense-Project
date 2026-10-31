@@ -52,10 +52,7 @@
   Statistics.
 
 Các hàm như `LogController::__call()`, `LogMatcher.match_records()` và các
-action `configdRun()` là code riêng của OPNsense, không có manual FreeBSD
-riêng. Với các hàm này, link tới file định nghĩa/điểm gọi ở mục **Code** bên
-trên và các reference trong từng hàng là tài liệu chính xác nhất. Các bản
-source tương ứng trong repository upstream của OPNsense:
+action `configdRun()` xem ở các bản source tương ứng trong repo của OPNsense:
 [LogController.php](https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Diagnostics/Api/LogController.php),
 [queryLog.py](https://github.com/opnsense/core/blob/master/src/opnsense/scripts/syslog/queryLog.py),
 [log_matcher.py](https://github.com/opnsense/core/blob/master/src/opnsense/scripts/syslog/log_matcher.py),
@@ -69,27 +66,17 @@ và [FirmwareController.php](https://github.com/opnsense/core/blob/master/src/op
 
 "system" = log kernel, log nội bộ, các log ko match filter nào (system catch-all)
 
-### Cách đọc hướng dẫn PoC
+### Proof of Concept   
 
-Chỉ thử trên OPNsense lab/VM riêng hoặc thiết bị bạn được phép quản trị.
-**Shell** là cửa sổ dòng lệnh của OPNsense (mở bằng console hoặc SSH).
-Sau thao tác, vào **Diagnostics > Log File**, chọn đúng nhóm log và tìm nội
-dung được ghi trong hướng dẫn. Cần bật **local logging** (ghi log trên chính
-máy OPNsense) để xem các file log cục bộ.
+>Chỉ thử trên OPNsense lab/VM riêng. **Shell** là cửa sổ dòng lệnh của OPNsense (mở bằng console hoặc SSH). Sau thao tác, vào **Diagnostics > Log File**, chọn đúng nhóm log và tìm nội dung được ghi trong hướng dẫn. Cần bật **local logging** (ghi log trên chính máy OPNsense) để xem các file log cục bộ.
 
-Hai kiểu kiểm tra trong cột PoC có mục đích khác nhau:
+>Hai kiểu kiểm tra trong cột PoC có mục đích khác nhau:
+>- **PoC sự kiện thật:** thao tác bình thường trên lab khiến dịch vụ/kernel thật phát log, ví dụ client test xin DHCP lease hoặc đăng nhập VPN test. Đây mới là cách kiểm tra event của thành phần đó.
+>- **Kiểm tra đường ghi log:** lệnh `logger` gửi một dòng mẫu vào syslog để xem nó có được lưu/hiển thị ở nhóm dự kiến không. Nó không chạy dịch vụ, không tạo lỗi của dịch vụ và không chứng minh dịch vụ thật đã phát log. Hướng dẫn sẽ ghi rõ khi chỉ đang kiểm tra đường ghi log.
 
-- **PoC sự kiện thật:** thao tác bình thường trên lab khiến dịch vụ/kernel
-  thật phát log, ví dụ client test xin DHCP lease hoặc đăng nhập VPN test.
-  Đây mới là cách kiểm tra event của thành phần đó.
-- **Kiểm tra đường ghi log:** lệnh `logger` gửi một dòng mẫu vào syslog để
-  xem nó có được lưu/hiển thị ở nhóm dự kiến không. Nó không chạy dịch vụ,
-  không tạo lỗi của dịch vụ và không chứng minh dịch vụ thật đã phát log.
-  Hướng dẫn sẽ ghi rõ khi chỉ đang kiểm tra đường ghi log.
+#### Cú pháp lệnh `logger` (dùng để tạo PoC ở 1 số loại log)
 
-#### Cú pháp lệnh `logger`
-
-Mẫu:
+Syntax:
 
 ```sh
 logger -p <facility>.<severity> -t <tag> '<message>'
